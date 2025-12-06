@@ -165,6 +165,12 @@ if __name__ == "__main__":
                 sources=["src/gather_points_cpu.cpp"],
                 sources_cuda=["src/gather_points_cuda.cu"],
             ),
+            make_cuda_ext(
+                name="feature_decorator_ext",
+                module="mmdet3d.ops.feature_decorator",
+                sources=["src/feature_decorator.cpp"],
+                sources_cuda=["src/feature_decorator_cuda.cu"],
+            ),
         ],
         cmdclass={"build_ext": BuildExtension},
         zip_safe=False,

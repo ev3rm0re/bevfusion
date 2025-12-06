@@ -11,7 +11,7 @@ at::Tensor feature_decorator_forward(
   const at::Tensor _y, 
   const at::Tensor _z, 
   const double vx, const double vy, const double x_offset, const double y_offset, 
-  int normalize_coords, int use_cluster, int use_center
+  int64_t normalize_coords, int64_t use_cluster, int64_t use_center
 ) {
   int n = _x.size(0);
   int c = _x.size(1);

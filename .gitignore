@@ -136,3 +136,12 @@ runs/*
 # torch hipify generated files
 *_hip.*
 *.hip
+
+# custom ignore rules
+train_result/*
+vis_result/*
+pretrained/*
+
+*.pth
+*.pkl
+*.zip
