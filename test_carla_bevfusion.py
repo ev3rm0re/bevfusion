@@ -17,7 +17,7 @@ from mmdet3d.core.bbox.iou_calculators import bbox_overlaps_3d
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Helper to load config
+# 加载配置的辅助函数
 def recursive_eval(obj, globals=None):
     if globals is None:
         globals = copy.deepcopy(obj)
@@ -35,7 +35,7 @@ def recursive_eval(obj, globals=None):
     return obj
 
 def get_matrix(transform):
-    """Converts Carla Transform to 4x4 Matrix"""
+    """将 Carla 变换转换为 4x4 矩阵"""
     m = transform.get_matrix()
     return np.array(m)
 
@@ -47,17 +47,17 @@ class MetricEvaluator:
     def __init__(self):
         self.predictions = []
         self.ground_truths = []
-        self.classes = [0] # Assuming only car for now
+        self.classes = [0]
         
     def add(self, preds, gts):
-        # preds: dict with 'boxes_3d', 'scores_3d', 'labels_3d'
-        # gts: dict with 'boxes_3d', 'labels_3d'
+        # preds: 包含 'boxes_3d', 'scores_3d', 'labels_3d' 的字典
+        # gts: 包含 'boxes_3d', 'labels_3d' 的字典
         self.predictions.append(preds)
         self.ground_truths.append(gts)
         
     def compute_map(self, iou_thr=0.5):
         aps = []
-        print(f"Computing mAP with IoU threshold {iou_thr}...")
+        print(f"正在计算 IoU 阈值为 {iou_thr} 的 mAP...")
         for cls_id in self.classes:
             all_preds = []
             all_gts = []
@@ -138,7 +138,7 @@ class MetricEvaluator:
 
 class BEVFusionWrapper:
     def __init__(self, config_path, checkpoint_path):
-        print(f"Loading model from {config_path}...")
+        print(f"正在从 {config_path} 加载模型...")
         configs.load(config_path, recursive=True)
         self.cfg = Config(recursive_eval(configs), filename=config_path)
         
@@ -146,16 +146,16 @@ class BEVFusionWrapper:
         load_checkpoint(self.model, checkpoint_path, map_location='cpu')
         self.model = self.model.cuda()
         self.model.eval()
-        print("Model loaded.")
+        print("模型已加载。")
 
     def process_data(self, agent_data):
-        # Prepare inputs for BEVFusion
+        # 为 BEVFusion 准备输入
         
-        # 1. Images
+        # 1. 图像
         imgs = []
         img_metas = {}
         
-        # nuScenes order: CAM_FRONT, CAM_FRONT_RIGHT, CAM_FRONT_LEFT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT
+        # nuScenes 顺序: CAM_FRONT, CAM_FRONT_RIGHT, CAM_FRONT_LEFT, CAM_BACK, CAM_BACK_LEFT, CAM_BACK_RIGHT
         sensor_names = ['CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT', 'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT']
         
         processed_imgs = []
@@ -176,7 +176,7 @@ class BEVFusionWrapper:
         
         lidar2ego_carla = np.linalg.inv(ego_matrix) @ lidar_matrix
         
-        # Coordinate conversion for Lidar: CARLA (Y-right) -> Model (Y-left)
+        # 激光雷达坐标转换: CARLA (Y轴向右) -> 模型 (Y轴向左)
         T_C2M = np.eye(4)
         T_C2M[1, 1] = -1
         
@@ -185,12 +185,12 @@ class BEVFusionWrapper:
         for name in sensor_names:
             sensor_data = agent_data[name]
             
-            # Image processing
+            # 图像处理
             array = np.frombuffer(sensor_data.raw_data, dtype=np.dtype("uint8"))
             array = np.reshape(array, (sensor_data.height, sensor_data.width, 4)) # BGRA
             img = array[:, :, :3] # BGR
             
-            # Resize and Crop
+            # 调整大小和裁剪
             h, w = img.shape[:2]
             resize_scale = 0.48
             new_w = int(w * resize_scale)
@@ -202,14 +202,14 @@ class BEVFusionWrapper:
             start_w = (new_w - crop_w) // 2
             img_cropped = img_resized[start_h:start_h+crop_h, start_w:start_w+crop_w]
             
-            # Normalize
+            # 归一化
             mean = np.array([0.485, 0.456, 0.406], dtype=np.float32) * 255
             std = np.array([0.229, 0.224, 0.225], dtype=np.float32) * 255
             img_norm = (img_cropped - mean) / std
             
             processed_imgs.append(torch.tensor(img_norm).permute(2, 0, 1)) # C, H, W
             
-            # Matrices
+            # 矩阵
             fov = sensor_data.fov
             f = w / (2.0 * np.tan(fov * np.pi / 360.0))
             K = np.identity(3)
@@ -217,7 +217,7 @@ class BEVFusionWrapper:
             K[0, 2] = w / 2.0
             K[1, 2] = h / 2.0
             
-            # Augmentation Matrix
+            # 增强矩阵
             aug_mat = np.eye(4)
             aug_mat[0, 0] = resize_scale
             aug_mat[1, 1] = resize_scale
@@ -225,13 +225,13 @@ class BEVFusionWrapper:
             aug_mat[1, 3] = -start_h
             img_aug_matrix.append(aug_mat)
             
-            # Transforms
+            # 变换
             cam_world_transform = get_matrix(sensor_data.transform)
             lidar_world_transform = get_matrix(lidar_data.transform)
             
             lidar2cam_carla = np.linalg.inv(cam_world_transform) @ lidar_world_transform
             
-            # Coordinate conversion for Camera: CARLA -> Model
+            # 相机坐标转换: CARLA -> 模型
             R_C_C2M = np.array([[0, 1, 0], [0, 0, -1], [1, 0, 0]])
             T_C_C2M = np.eye(4)
             T_C_C2M[:3, :3] = R_C_C2M
@@ -250,16 +250,16 @@ class BEVFusionWrapper:
             c2e = lidar2ego_model @ np.linalg.inv(l2c_model)
             camera2ego.append(c2e)
 
-        # 2. Lidar Processing
+        # 2. 激光雷达处理
         points = np.frombuffer(lidar_data.raw_data, dtype=np.float32)
         points = np.reshape(points, (-1, 4)).copy()
         points[:, 1] = -points[:, 1] # Flip Y
         
-        # Transform to Ego Frame (Model Convention)
-        # The model expects points in Ego Frame because the fusion happens in Ego Frame.
+        # 转换到 Ego 坐标系
+        # 模型期望点在 Ego 坐标系中，因为融合发生在 Ego 坐标系中。
         points[:, 2] += lidar2ego_carla[2, 3]
         
-        points = np.pad(points, ((0, 0), (0, 1)), mode='constant', constant_values=0) # Pad to 5 channels
+        points = np.pad(points, ((0, 0), (0, 1)), mode='constant', constant_values=0) # 填充到 5 个通道
         points_tensor = torch.tensor(points, dtype=torch.float32)
         
         imgs_tensor = torch.stack(processed_imgs).unsqueeze(0) # B, N, C, H, W
@@ -302,6 +302,19 @@ class BEVFusionWrapper:
         scores = result['scores_3d'].cpu().numpy()
         labels = result['labels_3d'].cpu().numpy()
         
+        # 坐标校正:
+        # 1. 模型预测几何中心 (Z_geo)，但我们需要底部中心 (Z_bottom)。
+        #    Z_bottom = Z_geo - 高度 / 2
+        boxes[:, 2] -= boxes[:, 5] / 2
+        
+        # 2. Ego 坐标系 -> 激光雷达坐标系
+        lidar2ego_carla = inputs['lidar2ego_carla']
+        lidar_z_offset = lidar2ego_carla[2, 3]
+        boxes[:, 2] -= lidar_z_offset
+
+        # 3. 修复旋转 (偏航角)
+        boxes[:, 6] *= -1
+        
         return boxes, scores, labels
 
 class Visualizer:
@@ -310,41 +323,41 @@ class Visualizer:
 
     def draw_3d_box_on_image(self, img, box, lidar2image, color=(0, 255, 0)):
         # box: [x, y, z, dx, dy, dz, rot]
-        # Assumes box is in LiDARInstance3DBoxes format (z is Bottom Center)
+        # box 是 LiDARInstance3DBoxes 格式
         x, y, z_bottom, dx, dy, dz, rot = box[:7]
         
-        # Convert Bottom Center to Geometric Center for corner calculation
+        # 将底部中心转换为几何中心以进行角点计算
         z_center = z_bottom + dz / 2
         
-        # Corners relative to geometric center
+        # 相对于几何中心的角点
         x_corners = [dx/2, dx/2, -dx/2, -dx/2, dx/2, dx/2, -dx/2, -dx/2]
         y_corners = [dy/2, -dy/2, -dy/2, dy/2, dy/2, -dy/2, -dy/2, dy/2]
         z_corners = [dz/2, dz/2, dz/2, dz/2, -dz/2, -dz/2, -dz/2, -dz/2]
         
         corners = np.vstack([x_corners, y_corners, z_corners]) # 3x8
         
-        # Rotate
+        # 旋转
         c = np.cos(rot)
         s = np.sin(rot)
         R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
         corners = R @ corners
         
-        # Translate (using geometric center)
+        # 平移 (使用几何中心)
         corners[0, :] += x
         corners[1, :] += y
         corners[2, :] += z_center
         
-        # Homogeneous
+        # 齐次化
         corners_hom = np.vstack([corners, np.ones((1, 8))]) # 4x8
         
-        # Project
+        # 投影
         corners_img = lidar2image @ corners_hom
         
-        # Check if box is behind camera
+        # 检查 box 是否在相机后面
         if np.any(corners_img[2, :] <= 0):
             return
 
-        # Normalize
+        # 归一化
         corners_img = corners_img[:3, :]
         corners_img /= corners_img[2, :]
         corners_img = corners_img.T # 8x3
@@ -354,33 +367,33 @@ class Visualizer:
             p2 = (int(corners_img[j, 0]), int(corners_img[j, 1]))
             cv2.line(img, p1, p2, color, 2)
             
-        # Draw lines
+        # 绘制线条
         lines = [(0,1), (1,2), (2,3), (3,0), (4,5), (5,6), (6,7), (7,4), (0,4), (1,5), (2,6), (3,7)]
         for i, j in lines:
             draw_line(i, j)
 
     def generate_bev(self, points, boxes, gt_boxes=None, x_range=(-50, 50), y_range=(-50, 50), resolution=0.1):
-        # Create canvas
+        # 创建画布
         h = int((x_range[1] - x_range[0]) / resolution)
         w = int((y_range[1] - y_range[0]) / resolution)
         bev_img = np.zeros((h, w, 3), dtype=np.uint8)
         
-        # Draw points (points is N x 5)
-        # Filter
+        # 绘制点 (点是 N x 5)
+        # 过滤
         mask = (points[:, 0] > x_range[0]) & (points[:, 0] < x_range[1]) & \
                (points[:, 1] > y_range[0]) & (points[:, 1] < y_range[1])
         valid_points = points[mask]
         
-        # Map to pixel
-        # Image (0,0) is Top-Left.
-        # World X is Up (Top). World Y is Left.
+        # 映射到像素
+        # 图像 (0,0) 是左上角。
+        # 世界坐标 X 是向上 (顶部)。世界坐标 Y 是向左。
         # row = (x_max - x) / res
         # col = (y_max - y) / res
         
         x_img = ((x_range[1] - valid_points[:, 0]) / resolution).astype(np.int32)
         y_img = ((y_range[1] - valid_points[:, 1]) / resolution).astype(np.int32)
         
-        # Clip
+        # 裁剪
         x_img = np.clip(x_img, 0, h-1)
         y_img = np.clip(y_img, 0, w-1)
         
@@ -394,16 +407,16 @@ class Visualizer:
                     [dx/2, dy/2], [dx/2, -dy/2], [-dx/2, -dy/2], [-dx/2, dy/2]
                 ])
                 
-                # Rotate
+                # 旋转
                 c = np.cos(rot)
                 s = np.sin(rot)
                 R = np.array([[c, -s], [s, c]])
                 corners = corners @ R.T
                 
-                # Translate
+                # 平移
                 corners += np.array([x, y])
                 
-                # Map to pixel
+                # 映射到像素
                 c_x = ((x_range[1] - corners[:, 0]) / resolution).astype(np.int32)
                 c_y = ((y_range[1] - corners[:, 1]) / resolution).astype(np.int32)
                 
@@ -412,7 +425,7 @@ class Visualizer:
                 
                 cv2.polylines(bev_img, [pts], True, color, 2)
                 
-                # Draw direction (Front center)
+                # 绘制方向 (前中心)
                 front_pt = np.array([dx/2, 0])
                 front_pt = front_pt @ R.T + np.array([x, y])
                 f_x = int((x_range[1] - front_pt[0]) / resolution)
@@ -423,11 +436,11 @@ class Visualizer:
                 
                 cv2.line(bev_img, (center_y, center_x), (f_y, f_x), (0, 0, 255), 2)
 
-        # Draw GT boxes (Blue)
+        # 绘制 GT 框 (蓝色)
         if gt_boxes is not None:
             draw_boxes(gt_boxes, (255, 0, 0))
 
-        # Draw Pred boxes (Green)
+        # 绘制预测框 (绿色)
         draw_boxes(boxes, (0, 255, 0))
             
         return bev_img
@@ -448,13 +461,13 @@ class CarlaAgent:
         self.img_size = (1600, 900)
         
     def setup(self):
-        # Clean up all existing vehicles to ensure a fresh start
-        print("Cleaning up all existing vehicles...")
+        # 清理所有现有车辆以确保重新开始
+        print("正在清理所有现有车辆...")
         all_vehicles = self.world.get_actors().filter('vehicle.*')
         if len(all_vehicles) > 0:
             self.client.apply_batch([carla.command.DestroyActor(x) for x in all_vehicles])
 
-        # Configure Traffic Manager first
+        # 首先配置交通管理器
         self.tm = self.client.get_trafficmanager(8000)
         self.tm.set_synchronous_mode(True)
         self.tm.set_random_device_seed(0)
@@ -464,13 +477,13 @@ class CarlaAgent:
         self.tm.set_hybrid_physics_mode(True)
         self.tm.set_hybrid_physics_radius(70.0)
 
-        # Configure World
+        # 配置世界
         settings = self.world.get_settings()
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = 0.1
         self.world.apply_settings(settings)
         
-        # Spawn Ego
+        # 生成 Ego 车辆
         bp = self.bp_lib.find('vehicle.tesla.model3')
         spawn_points = self.world.get_map().get_spawn_points()
         random.shuffle(spawn_points)
@@ -481,7 +494,7 @@ class CarlaAgent:
                 break
         
         if not self.ego_vehicle:
-             raise RuntimeError("Could not spawn ego vehicle")
+             raise RuntimeError("无法生成 Ego 车辆")
 
         self.ego_vehicle.set_autopilot(True, self.tm.get_port())
         
@@ -513,7 +526,7 @@ class CarlaAgent:
                 vehicle.set_autopilot(True, self.tm.get_port())
                 self.other_actors.append(vehicle)
                 count += 1
-        print(f"Spawned {count} vehicles")
+        print(f"已生成 {count} 辆车")
 
     def spawn_sensors(self):
         cam_configs = [
@@ -550,7 +563,7 @@ class CarlaAgent:
         lidar_bp.set_attribute('upper_fov', '10.0')
         lidar_bp.set_attribute('lower_fov', '-30.0')
         
-        lidar_transform = carla.Transform(carla.Location(x=0.0, z=1.84), carla.Rotation())
+        lidar_transform = carla.Transform(carla.Location(x=0.0, z=2.0), carla.Rotation())
         lidar_sensor = self.world.spawn_actor(lidar_bp, lidar_transform, attach_to=self.ego_vehicle)
         self.sensors.append(lidar_sensor)
         q = Queue()
@@ -562,7 +575,7 @@ class CarlaAgent:
         try:
             self.world.tick()
         except RuntimeError as e:
-            print(f"RuntimeError during tick: {e}")
+            print(f"tick 期间发生 RuntimeError: {e}")
             return None
         
         data = {}
@@ -573,23 +586,29 @@ class CarlaAgent:
                 sensor_data = self.sensor_queues[sensor.id].get(timeout=2.0)
                 data[name] = sensor_data
             except Empty:
-                print(f"Timeout waiting for {name}")
+                print(f"等待 {name} 超时")
                 return None
         return data
 
-    def get_ground_truth(self):
-        # We need Actor -> LiDAR (Model Frame)
-        # Actor (Carla World) -> LiDAR (Carla World) -> LiDAR (Model Frame)
+    def get_ground_truth(self, reference_lidar_transform=None):
+        # 我们需要 Actor -> 激光雷达 (模型坐标系)
+        # Actor (Carla 世界) -> 激光雷达 (Carla 世界) -> 激光雷达 (模型坐标系)
         
         gt_boxes = []
         gt_labels = []
         
-        # Get current LiDAR World Transform
-        lidar_sensor = self.sensor_data['LIDAR_TOP']['sensor']
-        lidar_world_transform = lidar_sensor.get_transform()
+        # 获取当前激光雷达世界变换
+        # 优先使用传入的参考变换 (来自数据包)，以保证时间戳对齐
+        if reference_lidar_transform is not None:
+            lidar_world_transform = reference_lidar_transform
+        else:
+            lidar_sensor = self.sensor_data['LIDAR_TOP']['sensor']
+            lidar_world_transform = lidar_sensor.get_transform()
+            
         lidar_world_matrix = get_matrix(lidar_world_transform)
         
-        # T_C2M for flipping Y
+        # 用于翻转 Y 的 T_C2M
+        # CARLA是左手系，模型是右手系
         T_C2M = np.eye(4)
         T_C2M[1, 1] = -1
         
@@ -597,35 +616,35 @@ class CarlaAgent:
             if not actor.is_alive:
                 continue
                 
-            # 1. Get Actor Transform in Carla World
+            # 1. 获取 Carla 世界中的 Actor 变换
             actor_trans = actor.get_transform()
             actor_matrix = get_matrix(actor_trans)
             
-            # 2. Apply Bounding Box Offset (to get center of box)
-            # bb_loc is relative to actor origin
+            # 2. 应用边界框偏移 (以获取框的中心)
+            # bb_loc 相对于 actor 原点
             bb_loc = actor.bounding_box.location
             offset_matrix = np.eye(4)
             offset_matrix[0, 3] = bb_loc.x
             offset_matrix[1, 3] = bb_loc.y
             offset_matrix[2, 3] = bb_loc.z
             
-            # Center of box in World Frame
+            # 世界坐标系中的框中心
             actor_center_matrix = actor_matrix @ offset_matrix
             
-            # 3. Actor Center -> LiDAR (Carla)
+            # 3. Actor 中心 -> 激光雷达 (Carla)
             # L_w @ T_a2l = A_w  => T_a2l = inv(L_w) @ A_w
             actor_in_lidar_carla = np.linalg.inv(lidar_world_matrix) @ actor_center_matrix
             
-            # 4. Convert to Model Frame (Flip Y)
+            # 4. 转换到模型坐标系 (翻转 Y)
             # Pose_Model = T_C2M @ Pose_Carla @ inv(T_C2M)
             actor_in_lidar_model = T_C2M @ actor_in_lidar_carla @ np.linalg.inv(T_C2M)
             
-            # Extract Box parameters
-            # Location
+            # 提取 Box 参数
+            # 位置
             x, y, z = actor_in_lidar_model[:3, 3]
             
-            # Filter by range (same as BEV grid)
-            if x < -30 or x > 30 or y < -30 or y > 30:
+            # 按范围过滤 (与 BEV 网格相同, ±50 米)
+            if x < -50 or x > 50 or y < -50 or y > 50:
                 continue
             
             extent = actor.bounding_box.extent
@@ -633,18 +652,18 @@ class CarlaAgent:
             dy = extent.y * 2
             dz = extent.z * 2
             
-            # Adjust Z to bottom center (LiDARInstance3DBoxes convention)
-            # We are currently at the center of the box (due to offset_matrix)
-            # So we subtract half height
+            # 将 Z 调整到底部中心 (LiDARInstance3DBoxes 约定)
+            # 我们目前位于框的中心 (由于 offset_matrix)
+            # 所以我们减去一半的高度
             z = z - extent.z
             
-            # Rotation
-            # We need yaw in LiDAR Model Frame.
+            # 旋转
+            # 我们需要激光雷达模型坐标系中的偏航角。
             rot_mat = actor_in_lidar_model[:3, :3]
             yaw = np.arctan2(rot_mat[1, 0], rot_mat[0, 0])
             
             gt_boxes.append([x, y, z, dx, dy, dz, yaw])
-            gt_labels.append(0) # Default to Car
+            gt_labels.append(0) # 默认为汽车
             
         if not gt_boxes:
             return np.zeros((0, 7)), np.zeros((0,))
@@ -652,7 +671,7 @@ class CarlaAgent:
         return np.array(gt_boxes), np.array(gt_labels)
 
     def cleanup(self):
-        print("Cleaning up...")
+        print("正在清理...")
         commands = []
         for sensor in self.sensors:
             if sensor.is_alive:
@@ -674,8 +693,8 @@ class CarlaAgent:
             settings.synchronous_mode = False
             self.world.apply_settings(settings)
         except Exception as e:
-            print(f"Error resetting settings: {e}")
-        print("Cleanup done.")
+            print(f"重置设置时出错: {e}")
+        print("清理完成。")
 
 # ==============================================================================
 # Main
@@ -692,105 +711,123 @@ def main():
     
     try:
         agent.setup()
-        print("CARLA setup done. Starting loop...")
+        print("CARLA 设置完成。开始循环...")
         
         frame_count = 0
         while True:
             if not agent.ego_vehicle.is_alive:
-                print("Ego vehicle destroyed. Exiting.")
+                print("Ego 车辆被销毁。正在退出。")
                 break
                 
             data = agent.get_data()
             if data is None:
                 continue
                 
-            # Inference
+            # 推理
             inputs = model_wrapper.process_data(data)
             boxes, scores, labels = model_wrapper.predict(inputs)
-            
-            # Coordinate Correction:
-            # 1. Model predicts Geometric Center (Z_geo), but we need Bottom Center (Z_bottom).
-            #    Z_bottom = Z_geo - Height / 2
-            boxes[:, 2] -= boxes[:, 5] / 2
-            
-            # 2. Ego Frame -> LiDAR Frame
-            lidar2ego_carla = inputs['lidar2ego_carla']
-            lidar_z_offset = lidar2ego_carla[2, 3]
-            boxes[:, 2] -= lidar_z_offset
 
-            # 3. Fix Rotation (Yaw)
-            boxes[:, 6] *= -1
-
-            # Filter
-            mask = scores > 0.3
+            # 过滤
+            mask = scores > 0.4
             boxes = boxes[mask]
             scores = scores[mask]
             labels = labels[mask]
             
-            # Get Ground Truth
-            gt_boxes, gt_labels = agent.get_ground_truth()
+            # 获取 Ground Truth
+            # 传入当前帧 LiDAR 的变换，确保 GT 计算基于同一时刻的坐标系
+            gt_boxes, gt_labels = agent.get_ground_truth(data['LIDAR_TOP'].transform)
             
-            # Add to evaluator
-            # Ensure boxes are 7-dim
-            eval_boxes = boxes[:, :7] if boxes.shape[1] > 7 else boxes
-            eval_gt_boxes = gt_boxes[:, :7] if gt_boxes.shape[1] > 7 else gt_boxes
+            # 模型输出包含速度（vx, vy），只取前7个数值进行评估
+            if boxes.shape[1] > 7:
+                eval_boxes = boxes[:, :7]
+            else:
+                eval_boxes = boxes
+            eval_gt_boxes = gt_boxes
             
             evaluator.add(
                 {'boxes_3d': eval_boxes, 'scores_3d': scores, 'labels_3d': labels},
                 {'boxes_3d': eval_gt_boxes, 'labels_3d': gt_labels}
             )
             
-            print(f"Frame {frame_count}: Detected {len(boxes)} objects. GT: {len(gt_boxes)}")
+            print(f"帧 {frame_count}: 检测到 {len(boxes)} 个对象。GT: {len(gt_boxes)}")
             
-            # Visualization
-            # 1. Camera View
-            front_cam_data = data['CAM_FRONT']
-            array = np.frombuffer(front_cam_data.raw_data, dtype=np.dtype("uint8"))
-            array = np.reshape(array, (front_cam_data.height, front_cam_data.width, 4))
-            vis_img = array[:, :, :3].copy()
+            # 可视化
+            # 1. 相机视图 (6个摄像头)
+            # 必须与 process_data 中的顺序一致
+            sensor_names = ['CAM_FRONT', 'CAM_FRONT_RIGHT', 'CAM_FRONT_LEFT', 'CAM_BACK', 'CAM_BACK_LEFT', 'CAM_BACK_RIGHT']
             
-            lidar2img = inputs['lidar2image'][0][0].cpu().numpy()
+            # 定义显示布局: 2行3列
+            # Row 1: Front Left, Front, Front Right
+            # Row 2: Back Left, Back, Back Right
+            layout = [
+                ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT'],
+                ['CAM_BACK_LEFT',  'CAM_BACK',  'CAM_BACK_RIGHT']
+            ]
             
-            # Draw GT (Blue)
-            for box in gt_boxes:
-                visualizer.draw_3d_box_on_image(vis_img, box, lidar2img, color=(255, 0, 0))
+            cam_images_rows = []
+            
+            for row_sensors in layout:
+                row_imgs = []
+                for sensor_name in row_sensors:
+                    # 获取图像
+                    sensor_data = data[sensor_name]
+                    array = np.frombuffer(sensor_data.raw_data, dtype=np.dtype("uint8"))
+                    array = np.reshape(array, (sensor_data.height, sensor_data.width, 4))
+                    vis_img = array[:, :, :3].copy()
+                    
+                    # 获取对应的 lidar2image 矩阵
+                    idx = sensor_names.index(sensor_name)
+                    lidar2img = inputs['lidar2image'][0][idx].cpu().numpy()
+                    
+                    # 绘制 GT (蓝色)
+                    for box in gt_boxes:
+                        visualizer.draw_3d_box_on_image(vis_img, box, lidar2img, color=(255, 0, 0))
+                        
+                    # 绘制预测 (绿色)
+                    for box in boxes:
+                        visualizer.draw_3d_box_on_image(vis_img, box, lidar2img, color=(0, 255, 0))
+                    
+                    # 调整大小
+                    target_w = 480
+                    scale = target_w / vis_img.shape[1]
+                    target_h = int(vis_img.shape[0] * scale)
+                    vis_img_small = cv2.resize(vis_img, (target_w, target_h))
+                    
+                    # 在图像上添加标签
+                    cv2.putText(vis_img_small, sensor_name, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                    
+                    row_imgs.append(vis_img_small)
                 
-            # Draw Pred (Green)
-            for box in boxes:
-                visualizer.draw_3d_box_on_image(vis_img, box, lidar2img, color=(0, 255, 0))
+                # 拼接这一行
+                cam_images_rows.append(np.hstack(row_imgs))
             
-            # 2. BEV View
+            # 拼接所有行 (垂直)
+            cam_canvas = np.vstack(cam_images_rows)
+            
+            # 2. BEV 视图
             points = inputs['points'][0].cpu().numpy()
             bev_img = visualizer.generate_bev(points, boxes, gt_boxes=gt_boxes)
             
-            # Combine and Display
-            # Resize BEV to match height of Camera image or vice versa
-            # Cam: 1600x900. BEV: 1000x1000 (if 100m range / 0.1 res)
-            
-            # Let's resize both to a reasonable display size
-            display_h = 600
-            scale_cam = display_h / vis_img.shape[0]
-            cam_w = int(vis_img.shape[1] * scale_cam)
-            vis_img_small = cv2.resize(vis_img, (cam_w, display_h))
-            
-            scale_bev = display_h / bev_img.shape[0]
+            # 调整 BEV 大小以匹配相机画布的高度
+            total_h = cam_canvas.shape[0]
+            scale_bev = total_h / bev_img.shape[0]
             bev_w = int(bev_img.shape[1] * scale_bev)
-            bev_img_small = cv2.resize(bev_img, (bev_w, display_h))
+            bev_img_resized = cv2.resize(bev_img, (bev_w, total_h))
             
-            combined = np.hstack([vis_img_small, bev_img_small])
-            
+            # 最终拼接: 左侧相机，右侧BEV
+            combined = np.hstack([cam_canvas, bev_img_resized])
             
             cv2.imwrite('vis_output.jpg', combined)
             frame_count += 1
             
     except KeyboardInterrupt:
-        print("Stopping...")
-        # Compute Metrics
+        print("正在停止...")
+        # 计算指标
         mAP = evaluator.compute_map()
-        print(f"Final mAP: {mAP:.4f}")
+        print(f"最终 mAP: {mAP:.4f}")
         
     except Exception as e:
-        print(f"Exception: {e}")
+        print(f"异常: {e}")
         import traceback
         traceback.print_exc()
     finally:
